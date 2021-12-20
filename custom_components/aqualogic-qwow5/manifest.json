@@ -1,0 +1,8 @@
+{
+  "domain": "aqualogic-qwow5",
+  "name": "AquaLogic",
+  "version": "2.6",
+  "documentation": "https://www.github.com/qwow5/ha-aqualogic",
+  "requirements": ["aqualogic==2.6"],
+  "codeowners": []
+}
