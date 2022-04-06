@@ -8,14 +8,14 @@ from aqualogic.core import AquaLogic
 import voluptuous as vol
 
 from homeassistant.const import (
-    CONF_DEVICE,
     CONF_HOST,
-    CONF_PATH,
     CONF_PORT,
     EVENT_HOMEASSISTANT_START,
     EVENT_HOMEASSISTANT_STOP,
 )
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,43 +27,34 @@ RECONNECT_INTERVAL = timedelta(seconds=10)
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
-            {
-                vol.Optional(CONF_DEVICE, default="socket"): cv.string,
-                vol.Optional(CONF_HOST, default="localhost"): cv.string,
-                vol.Optional(CONF_PORT, default=23): cv.port,
-                vol.Optional(CONF_PATH, default="/dev/ttyUSB0"): cv.string,
-            }
+            {vol.Required(CONF_HOST): cv.string, vol.Required(CONF_PORT): cv.port}
         )
     },
     extra=vol.ALLOW_EXTRA,
 )
 
 
-def setup(hass, config):
+def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up AquaLogic platform."""
-    device = config[DOMAIN][CONF_DEVICE]
     host = config[DOMAIN][CONF_HOST]
     port = config[DOMAIN][CONF_PORT]
-    path = config[DOMAIN][CONF_PATH]
-    processor = AquaLogicProcessor(hass, device, host, port, path)
+    processor = AquaLogicProcessor(hass, host, port)
     hass.data[DOMAIN] = processor
     hass.bus.listen_once(EVENT_HOMEASSISTANT_START, processor.start_listen)
     hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, processor.shutdown)
-    _LOGGER.debug("AquaLogicProcessor initialized")
+    _LOGGER.debug("AquaLogicProcessor %s:%i initialized", host, port)
     return True
 
 
 class AquaLogicProcessor(threading.Thread):
     """AquaLogic event processor thread."""
 
-    def __init__(self, hass, device, host, port, path):
+    def __init__(self, hass, host, port):
         """Initialize the data object."""
         super().__init__(daemon=True)
         self._hass = hass
-        self._device = device
         self._host = host
         self._port = port
-        self._path = path
         self._shutdown = False
         self._panel = None
 
@@ -86,20 +77,14 @@ class AquaLogicProcessor(threading.Thread):
 
         while True:
             self._panel = AquaLogic()
-            if self._device == "socket":
-                _LOGGER.info("Connecting to %s:%d", self._host, self._port)
-                self._panel.connect_socket(self._host, self._port)
-            else:
-                _LOGGER.info("Connecting to %s", self._path)
-                self._panel.connect_serial(self._path)
-
+            self._panel.connect(self._host, self._port)
             self._panel.process(self.data_changed)
 
             if self._shutdown:
                 return
 
             _LOGGER.error("Connection to %s:%d lost", self._host, self._port)
-            time.sleep(RECONNECT_INTERVAL.seconds)
+            time.sleep(RECONNECT_INTERVAL.total_seconds())
 
     @property
     def panel(self):
